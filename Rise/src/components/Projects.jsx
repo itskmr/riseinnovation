@@ -11,7 +11,7 @@ const projectsData = [
     title: 'HL City Site', 
     description: 'Discover properties in HL City and book appointments effortlessly with our all-in-one listing platform.', 
     image: 'land2lavish.png',
-    link: 'https://land2lavish-client-28bm.vercel.app/'
+    link: 'https://hlcity-6ndul7w1z-itskmrs-projects.vercel.app/'
   },
   { 
     title: 'Near India Workshop', 
