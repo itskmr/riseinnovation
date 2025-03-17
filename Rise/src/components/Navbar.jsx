@@ -21,13 +21,7 @@ const Navbar = () => {
       </Link>
 
       <div className="space-x-4">
-        <Link
-          to="/home#projects"
-          onClick={() => handleScroll('projects')}
-          className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
-        >
-          Projects
-        </Link>
+       
         {/* <Link
           to="/home#Footer"
           className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
