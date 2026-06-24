@@ -1,42 +1,72 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { getItems, addItem, deleteItem, logout } from '../lib/instaCodesStorage';
+import {
+  fetchItems,
+  createItem,
+  removeItem,
+  uploadImage,
+  logout,
+} from '../lib/instaCodesApi';
+
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 
 const AdminCMS = () => {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
+  const [loadingItems, setLoadingItems] = useState(true);
   const [title, setTitle] = useState('');
   const [link, setLink] = useState('');
   const [description, setDescription] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [imagePreview, setImagePreview] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    setItems(getItems());
+  const loadItems = useCallback(async () => {
+    try {
+      const data = await fetchItems();
+      setItems(data);
+    } catch {
+      setError('Failed to load items');
+    } finally {
+      setLoadingItems(false);
+    }
   }, []);
 
-  const handleImageUpload = (e) => {
+  useEffect(() => {
+    loadItems();
+  }, [loadItems]);
+
+  const handleImageUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      setError('Image must be under 2MB');
+    if (file.size > MAX_IMAGE_SIZE) {
+      setError('Image must be under 10MB');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const result = ev.target?.result;
-      setImagePreview(result);
-      setImageUrl(result);
-      setError('');
-    };
-    reader.readAsDataURL(file);
+    setUploading(true);
+    setError('');
+
+    try {
+      const preview = URL.createObjectURL(file);
+      setImagePreview(preview);
+
+      const url = await uploadImage(file);
+      setImageUrl(url);
+    } catch {
+      setError('Failed to upload image. Please try again or use an image URL.');
+      setImagePreview('');
+      setImageUrl('');
+    } finally {
+      setUploading(false);
+    }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
@@ -46,33 +76,50 @@ const AdminCMS = () => {
       return;
     }
 
-    addItem({
-      title: title.trim(),
-      link: link.trim(),
-      description: description.trim(),
-      image: imageUrl,
-    });
+    setSubmitting(true);
 
-    setItems(getItems());
-    setTitle('');
-    setLink('');
-    setDescription('');
-    setImageUrl('');
-    setImagePreview('');
-    setSuccess('Item added successfully!');
-    setTimeout(() => setSuccess(''), 3000);
+    try {
+      await createItem({
+        title: title.trim(),
+        link: link.trim(),
+        description: description.trim(),
+        image: imageUrl,
+      });
+
+      await loadItems();
+      setTitle('');
+      setLink('');
+      setDescription('');
+      setImageUrl('');
+      setImagePreview('');
+      setSuccess('Item added successfully!');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError(err.message || 'Failed to add item');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleDelete = (id) => {
-    if (window.confirm('Delete this item?')) {
-      deleteItem(id);
-      setItems(getItems());
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this item?')) return;
+
+    try {
+      await removeItem(id);
+      await loadItems();
+    } catch {
+      setError('Failed to delete item');
     }
   };
 
   const handleLogout = () => {
     logout();
     navigate('/auth/abcdef/admin-login');
+  };
+
+  const clearImage = () => {
+    setImagePreview('');
+    setImageUrl('');
   };
 
   return (
@@ -105,7 +152,6 @@ const AdminCMS = () => {
 
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-          {/* Add Form */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 sticky top-24">
               <h2 className="text-xl font-bold text-gray-900 mb-1">Add New Item</h2>
@@ -149,7 +195,7 @@ const AdminCMS = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Image</label>
                   <input
                     type="url"
-                    value={imageUrl.startsWith('data:') ? '' : imageUrl}
+                    value={imageUrl}
                     onChange={(e) => {
                       setImageUrl(e.target.value);
                       setImagePreview(e.target.value);
@@ -157,9 +203,11 @@ const AdminCMS = () => {
                     placeholder="https://example.com/image.png"
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-2"
                   />
-                  <label className="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-all">
-                    <span className="text-sm text-gray-500">Or upload an image (max 2MB)</span>
-                    <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                  <label className={`flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-all ${uploading ? 'opacity-60 pointer-events-none' : ''}`}>
+                    <span className="text-sm text-gray-500">
+                      {uploading ? 'Uploading...' : 'Or upload an image (max 10MB)'}
+                    </span>
+                    <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" disabled={uploading} />
                   </label>
                   {imagePreview && (
                     <div className="mt-3 relative">
@@ -170,7 +218,7 @@ const AdminCMS = () => {
                       />
                       <button
                         type="button"
-                        onClick={() => { setImagePreview(''); setImageUrl(''); }}
+                        onClick={clearImage}
                         className="absolute top-2 right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-lg"
                       >
                         Remove
@@ -192,15 +240,15 @@ const AdminCMS = () => {
 
                 <button
                   type="submit"
-                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors shadow-sm"
+                  disabled={submitting || uploading}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-semibold rounded-xl transition-colors shadow-sm"
                 >
-                  Add to Wall
+                  {submitting ? 'Adding...' : 'Add to Wall'}
                 </button>
               </form>
             </div>
           </div>
 
-          {/* Items List */}
           <div className="lg:col-span-3">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-gray-900">
@@ -209,7 +257,11 @@ const AdminCMS = () => {
               </h2>
             </div>
 
-            {items.length === 0 ? (
+            {loadingItems ? (
+              <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center text-gray-400">
+                Loading items...
+              </div>
+            ) : items.length === 0 ? (
               <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
                 <div className="text-4xl mb-3">📭</div>
                 <p className="text-gray-500">No items yet. Add your first one!</p>

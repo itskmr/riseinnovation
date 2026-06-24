@@ -1,5 +1,5 @@
 import { Navigate } from 'react-router-dom';
-import { isAuthenticated } from '../lib/instaCodesStorage';
+import { isAuthenticated } from '../lib/instaCodesApi';
 
 const ProtectedRoute = ({ children }) => {
   if (!isAuthenticated()) {

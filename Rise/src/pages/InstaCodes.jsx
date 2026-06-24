@@ -1,17 +1,21 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getItems } from '../lib/instaCodesStorage';
+import { fetchItems } from '../lib/instaCodesApi';
 
 const InstaCodes = () => {
   const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    setItems(getItems());
+    fetchItems()
+      .then(setItems)
+      .catch(() => setError('Failed to load items. Please refresh the page.'))
+      .finally(() => setLoading(false));
   }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      {/* Header */}
       <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-20">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <Link to="/instaCodes" className="flex items-center gap-3 group">
@@ -32,7 +36,6 @@ const InstaCodes = () => {
         </div>
       </header>
 
-      {/* Hero Banner */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-indigo-700" />
         <div className="absolute inset-0 opacity-10">
@@ -52,9 +55,17 @@ const InstaCodes = () => {
         </div>
       </section>
 
-      {/* Content Wall */}
       <main className="container mx-auto px-4 py-10">
-        {items.length === 0 ? (
+        {loading ? (
+          <div className="text-center py-24">
+            <div className="inline-block w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4" />
+            <p className="text-gray-500">Loading wall...</p>
+          </div>
+        ) : error ? (
+          <div className="text-center py-24">
+            <p className="text-red-500">{error}</p>
+          </div>
+        ) : items.length === 0 ? (
           <div className="text-center py-24">
             <div className="inline-flex items-center justify-center w-20 h-20 bg-blue-50 rounded-2xl mb-6">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -118,10 +129,8 @@ const InstaCodes = () => {
             ))}
           </div>
         )}
-
       </main>
 
-      {/* Footer */}
       <footer className="border-t border-gray-100 bg-white mt-8">
         <div className="container mx-auto px-4 py-8 text-center">
           <img src="/black-logo-rise.png" alt="Rise" className="h-7 w-auto mx-auto mb-3 opacity-60" />

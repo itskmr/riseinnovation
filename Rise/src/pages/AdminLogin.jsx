@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { login } from '../lib/instaCodesStorage';
+import { login } from '../lib/instaCodesApi';
 
 const AdminLogin = () => {
   const navigate = useNavigate();
@@ -9,19 +9,19 @@ const AdminLogin = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    setTimeout(() => {
-      if (login(email, password)) {
-        navigate('/auth/abcdef/admin');
-      } else {
-        setError('Invalid email or password');
-      }
+    try {
+      await login(email, password);
+      navigate('/auth/abcdef/admin');
+    } catch {
+      setError('Invalid email or password');
+    } finally {
       setLoading(false);
-    }, 400);
+    }
   };
 
   return (
