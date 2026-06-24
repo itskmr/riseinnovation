@@ -6,6 +6,7 @@ import {
   removeItem,
   uploadImage,
   logout,
+  checkStorage,
 } from '../lib/instaCodesApi';
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
@@ -23,6 +24,7 @@ const AdminCMS = () => {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
+  const [storageWarning, setStorageWarning] = useState('');
 
   const loadItems = useCallback(async () => {
     try {
@@ -37,6 +39,13 @@ const AdminCMS = () => {
 
   useEffect(() => {
     loadItems();
+    checkStorage()
+      .then((status) => {
+        if (!status.configured) {
+          setStorageWarning(status.message);
+        }
+      })
+      .catch(() => {});
   }, [loadItems]);
 
   const handleImageUpload = async (e) => {
@@ -57,8 +66,8 @@ const AdminCMS = () => {
 
       const url = await uploadImage(file);
       setImageUrl(url);
-    } catch {
-      setError('Failed to upload image. Please try again or use an image URL.');
+    } catch (err) {
+      setError(err.message || 'Failed to upload image. Please try again or use an image URL.');
       setImagePreview('');
       setImageUrl('');
     } finally {
@@ -151,6 +160,16 @@ const AdminCMS = () => {
       </header>
 
       <div className="container mx-auto px-4 py-8 max-w-6xl">
+        {storageWarning && (
+          <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-800 text-sm px-5 py-4 rounded-xl">
+            <p className="font-semibold mb-1">Storage not configured</p>
+            <p>{storageWarning}</p>
+            <p className="mt-2 text-amber-700">
+              Quick fix: In Vercel → your project → <strong>Storage</strong> → create a <strong>Blob</strong> store and redeploy.
+              Or set up free Supabase (see <code className="bg-amber-100 px-1 rounded">supabase/schema.sql</code> in the repo).
+            </p>
+          </div>
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
           <div className="lg:col-span-2">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 sticky top-24">

@@ -1,30 +1,53 @@
 import { put, list } from '@vercel/blob';
-import fs from 'fs';
-import path from 'path';
+import { kv } from '@vercel/kv';
+import { getSupabase, getStorageStatus } from './supabase.js';
 
 const BLOB_PATH = 'insta-codes/items.json';
-const LOCAL_PATH = path.join(process.cwd(), 'data', 'items.json');
+const KV_KEY = 'insta-codes:items';
 
-function useLocalStore() {
-  return !process.env.BLOB_READ_WRITE_TOKEN;
+function mapRow(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    link: row.link,
+    description: row.description || '',
+    image: row.image || '',
+    createdAt: row.created_at || row.createdAt,
+  };
 }
 
-function readLocal() {
-  try {
-    fs.mkdirSync(path.dirname(LOCAL_PATH), { recursive: true });
-    if (!fs.existsSync(LOCAL_PATH)) {
-      fs.writeFileSync(LOCAL_PATH, '[]');
-      return [];
-    }
-    return JSON.parse(fs.readFileSync(LOCAL_PATH, 'utf8'));
-  } catch {
-    return [];
-  }
+async function getItemsFromSupabase() {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('insta_codes')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return (data || []).map(mapRow);
 }
 
-function writeLocal(items) {
-  fs.mkdirSync(path.dirname(LOCAL_PATH), { recursive: true });
-  fs.writeFileSync(LOCAL_PATH, JSON.stringify(items, null, 2));
+async function addItemToSupabase(item) {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('insta_codes')
+    .insert({
+      title: item.title,
+      link: item.link,
+      description: item.description || '',
+      image: item.image || '',
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+  return mapRow(data);
+}
+
+async function deleteItemFromSupabase(id) {
+  const supabase = getSupabase();
+  const { error } = await supabase.from('insta_codes').delete().eq('id', id);
+  if (error) throw new Error(error.message);
 }
 
 async function readBlob() {
@@ -45,26 +68,39 @@ async function writeBlob(items) {
   });
 }
 
-export async function getItems() {
-  if (useLocalStore()) return readLocal();
-  return readBlob();
+async function getItemsFromKv() {
+  const items = await kv.get(KV_KEY);
+  return items || [];
 }
 
-export async function saveItems(items) {
-  if (useLocalStore()) {
-    if (process.env.VERCEL) {
-      throw new Error(
-        'Storage not configured. Enable Vercel Blob in your project dashboard (Storage → Blob).'
-      );
-    }
-    writeLocal(items);
-    return;
+async function saveItemsToKv(items) {
+  await kv.set(KV_KEY, items);
+}
+
+function assertStorageConfigured() {
+  if (getStorageStatus() === 'none') {
+    throw new Error(
+      'Storage not configured. Set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY in Vercel env vars, or enable Vercel Blob/KV in Storage tab.'
+    );
   }
-  await writeBlob(items);
+}
+
+export async function getItems() {
+  const backend = getStorageStatus();
+  if (backend === 'supabase') return getItemsFromSupabase();
+  if (backend === 'blob') return readBlob();
+  if (backend === 'kv') return getItemsFromKv();
+  return [];
 }
 
 export async function addItem(item) {
-  const items = await getItems();
+  assertStorageConfigured();
+  const backend = getStorageStatus();
+
+  if (backend === 'supabase') {
+    return addItemToSupabase(item);
+  }
+
   const newItem = {
     id: crypto.randomUUID(),
     title: item.title,
@@ -73,12 +109,40 @@ export async function addItem(item) {
     image: item.image || '',
     createdAt: new Date().toISOString(),
   };
-  items.unshift(newItem);
-  await saveItems(items);
-  return newItem;
+
+  if (backend === 'blob') {
+    const items = await readBlob();
+    items.unshift(newItem);
+    await writeBlob(items);
+    return newItem;
+  }
+
+  if (backend === 'kv') {
+    const items = await getItemsFromKv();
+    items.unshift(newItem);
+    await saveItemsToKv(items);
+    return newItem;
+  }
+
+  throw new Error('Storage not configured');
 }
 
 export async function deleteItem(id) {
-  const items = (await getItems()).filter((item) => item.id !== id);
-  await saveItems(items);
+  assertStorageConfigured();
+  const backend = getStorageStatus();
+
+  if (backend === 'supabase') {
+    return deleteItemFromSupabase(id);
+  }
+
+  if (backend === 'blob') {
+    const items = (await readBlob()).filter((item) => item.id !== id);
+    await writeBlob(items);
+    return;
+  }
+
+  if (backend === 'kv') {
+    const items = (await getItemsFromKv()).filter((item) => item.id !== id);
+    await saveItemsToKv(items);
+  }
 }
