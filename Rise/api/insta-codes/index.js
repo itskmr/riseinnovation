@@ -1,46 +1,38 @@
-import { getItems, addItem } from '../lib/store.js';
 import { verifyToken } from '../lib/auth.js';
-import { getStorageError } from '../lib/supabase.js';
+import { getItems, addItem, isStorageReady } from '../lib/store.js';
 
 export default async function handler(req, res) {
   if (req.method === 'GET') {
     try {
-      const items = await getItems();
-      return res.status(200).json(items);
+      return res.status(200).json(await getItems());
     } catch (err) {
-      console.error('GET /api/insta-codes error:', err);
-      return res.status(500).json({ error: err.message || 'Failed to fetch items' });
+      return res.status(500).json({ error: err.message });
     }
   }
 
   if (req.method === 'POST') {
     if (!verifyToken(req.headers.authorization)) {
-      return res.status(401).json({ error: 'Unauthorized — please log in again' });
+      return res.status(401).json({ error: 'Please log in again' });
     }
-
-    const storageError = getStorageError();
-    if (storageError) {
-      return res.status(503).json({ error: storageError });
+    if (!isStorageReady()) {
+      return res.status(503).json({
+        error: 'Storage not ready. Vercel → Storage → Create Blob store → Connect → Redeploy.',
+      });
     }
 
     try {
-      const body = req.body;
-
-      if (!body?.title?.trim() || !body?.link?.trim()) {
+      const { title, link, description } = req.body || {};
+      if (!title?.trim() || !link?.trim()) {
         return res.status(400).json({ error: 'Title and link are required' });
       }
-
       const item = await addItem({
-        title: body.title.trim(),
-        link: body.link.trim(),
-        description: body.description?.trim() || '',
-        image: body.image?.trim() || '',
+        title: title.trim(),
+        link: link.trim(),
+        description: description?.trim() || '',
       });
-
       return res.status(201).json(item);
     } catch (err) {
-      console.error('POST /api/insta-codes error:', err);
-      return res.status(500).json({ error: err.message || 'Failed to add item' });
+      return res.status(500).json({ error: err.message });
     }
   }
 

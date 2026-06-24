@@ -1,66 +1,50 @@
 import { put, list } from '@vercel/blob';
-import { kv } from '@vercel/kv';
-import { getSupabase, getStorageStatus } from './supabase.js';
+import fs from 'fs';
+import path from 'path';
+import { BLOB_READ_WRITE_TOKEN } from './config.js';
 
-const BLOB_PATH = 'insta-codes/items.json';
-const KV_KEY = 'insta-codes:items';
+const BLOB_FILE = 'insta-codes/items.json';
+const LOCAL_FILE = path.join(process.cwd(), 'public/data/items.json');
 
-function mapRow(row) {
-  return {
-    id: row.id,
-    title: row.title,
-    link: row.link,
-    description: row.description || '',
-    image: row.image || '',
-    createdAt: row.created_at || row.createdAt,
-  };
+if (BLOB_READ_WRITE_TOKEN) {
+  process.env.BLOB_READ_WRITE_TOKEN = BLOB_READ_WRITE_TOKEN;
 }
 
-async function getItemsFromSupabase() {
-  const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from('insta_codes')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (error) throw new Error(error.message);
-  return (data || []).map(mapRow);
-}
-
-async function addItemToSupabase(item) {
-  const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from('insta_codes')
-    .insert({
-      title: item.title,
-      link: item.link,
-      description: item.description || '',
-      image: item.image || '',
-    })
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return mapRow(data);
-}
-
-async function deleteItemFromSupabase(id) {
-  const supabase = getSupabase();
-  const { error } = await supabase.from('insta_codes').delete().eq('id', id);
-  if (error) throw new Error(error.message);
+function readLocal() {
+  try {
+    if (fs.existsSync(LOCAL_FILE)) {
+      return JSON.parse(fs.readFileSync(LOCAL_FILE, 'utf8'));
+    }
+  } catch {
+    // ignore
+  }
+  return [];
 }
 
 async function readBlob() {
-  const { blobs } = await list({ prefix: BLOB_PATH, limit: 1 });
-  const target = blobs.find((b) => b.pathname === BLOB_PATH);
-  if (!target) return [];
+  const { blobs } = await list({ prefix: BLOB_FILE, limit: 1 });
+  const target = blobs.find((b) => b.pathname === BLOB_FILE);
+  if (!target) return null;
   const res = await fetch(target.url);
-  if (!res.ok) return [];
+  if (!res.ok) return null;
   return res.json();
 }
 
-async function writeBlob(items) {
-  await put(BLOB_PATH, JSON.stringify(items), {
+async function getAllItems() {
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    const blobItems = await readBlob();
+    if (blobItems) return blobItems;
+  }
+  return readLocal();
+}
+
+async function saveAllItems(items) {
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    throw new Error(
+      'Storage not ready. In Vercel → your project → Storage → Create Blob store → Connect → Redeploy.'
+    );
+  }
+  await put(BLOB_FILE, JSON.stringify(items), {
     access: 'public',
     contentType: 'application/json',
     addRandomSuffix: false,
@@ -68,81 +52,29 @@ async function writeBlob(items) {
   });
 }
 
-async function getItemsFromKv() {
-  const items = await kv.get(KV_KEY);
-  return items || [];
-}
-
-async function saveItemsToKv(items) {
-  await kv.set(KV_KEY, items);
-}
-
-function assertStorageConfigured() {
-  if (getStorageStatus() === 'none') {
-    throw new Error(
-      'Storage not configured. Set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY in Vercel env vars, or enable Vercel Blob/KV in Storage tab.'
-    );
-  }
-}
-
 export async function getItems() {
-  const backend = getStorageStatus();
-  if (backend === 'supabase') return getItemsFromSupabase();
-  if (backend === 'blob') return readBlob();
-  if (backend === 'kv') return getItemsFromKv();
-  return [];
+  return getAllItems();
 }
 
 export async function addItem(item) {
-  assertStorageConfigured();
-  const backend = getStorageStatus();
-
-  if (backend === 'supabase') {
-    return addItemToSupabase(item);
-  }
-
+  const items = await getAllItems();
   const newItem = {
     id: crypto.randomUUID(),
     title: item.title,
     link: item.link,
     description: item.description || '',
-    image: item.image || '',
     createdAt: new Date().toISOString(),
   };
-
-  if (backend === 'blob') {
-    const items = await readBlob();
-    items.unshift(newItem);
-    await writeBlob(items);
-    return newItem;
-  }
-
-  if (backend === 'kv') {
-    const items = await getItemsFromKv();
-    items.unshift(newItem);
-    await saveItemsToKv(items);
-    return newItem;
-  }
-
-  throw new Error('Storage not configured');
+  items.unshift(newItem);
+  await saveAllItems(items);
+  return newItem;
 }
 
 export async function deleteItem(id) {
-  assertStorageConfigured();
-  const backend = getStorageStatus();
+  const items = (await getAllItems()).filter((i) => i.id !== id);
+  await saveAllItems(items);
+}
 
-  if (backend === 'supabase') {
-    return deleteItemFromSupabase(id);
-  }
-
-  if (backend === 'blob') {
-    const items = (await readBlob()).filter((item) => item.id !== id);
-    await writeBlob(items);
-    return;
-  }
-
-  if (backend === 'kv') {
-    const items = (await getItemsFromKv()).filter((item) => item.id !== id);
-    await saveItemsToKv(items);
-  }
+export function isStorageReady() {
+  return !!process.env.BLOB_READ_WRITE_TOKEN;
 }

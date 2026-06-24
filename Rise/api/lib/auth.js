@@ -1,8 +1,5 @@
 import crypto from 'crypto';
-
-const AUTH_SECRET = process.env.AUTH_SECRET || 'rise-insta-codes-secret';
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'roizlive69@gmail.com';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Abhay@2002#';
+import { ADMIN_EMAIL, ADMIN_PASSWORD, AUTH_SECRET } from './config.js';
 
 export function verifyCredentials(email, password) {
   return email === ADMIN_EMAIL && password === ADMIN_PASSWORD;
