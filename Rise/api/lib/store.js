@@ -1,10 +1,7 @@
-import { put, list, get } from '@vercel/blob';
-import fs from 'fs';
-import path from 'path';
+import { put, get } from '@vercel/blob';
 import { BLOB_READ_WRITE_TOKEN, BLOB_STORE_ID } from './config.js';
 
 const BLOB_FILE = 'insta-codes/items.json';
-const LOCAL_FILE = path.join(process.cwd(), 'public/data/items.json');
 
 function ensureBlobEnv() {
   if (BLOB_READ_WRITE_TOKEN && !process.env.BLOB_READ_WRITE_TOKEN) {
@@ -17,68 +14,45 @@ function ensureBlobEnv() {
 
 export function hasBlobStorage() {
   ensureBlobEnv();
-  return !!(
-    process.env.BLOB_STORE_ID ||
-    process.env.BLOB_READ_WRITE_TOKEN
-  );
+  return !!(process.env.BLOB_STORE_ID || process.env.BLOB_READ_WRITE_TOKEN);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function streamToText(stream) {
   return new Response(stream).text();
 }
 
-async function readBlob() {
+async function readBlobFresh() {
   ensureBlobEnv();
-  try {
-    const result = await get(BLOB_FILE, { access: 'private' });
-    if (result?.stream) {
-      return JSON.parse(await streamToText(result.stream));
-    }
-  } catch {
-    // file may not exist yet
-  }
-
-  try {
-    const { blobs } = await list({ prefix: 'insta-codes/', limit: 20 });
-    const target = blobs.find((b) => b.pathname === BLOB_FILE);
-    if (target) {
-      const result = await get(target.pathname, { access: 'private' });
-      if (result?.stream) {
-        return JSON.parse(await streamToText(result.stream));
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  return null;
+  const result = await get(BLOB_FILE, {
+    access: 'private',
+    useCache: false,
+  });
+  if (!result?.stream) return [];
+  const data = JSON.parse(await streamToText(result.stream));
+  return Array.isArray(data) ? data : [];
 }
 
-function readLocal() {
-  try {
-    if (fs.existsSync(LOCAL_FILE)) {
-      return JSON.parse(fs.readFileSync(LOCAL_FILE, 'utf8'));
+async function readBlobWithRetry(maxAttempts = 4) {
+  let lastError;
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      return await readBlobFresh();
+    } catch (err) {
+      lastError = err;
+      if (i < maxAttempts - 1) await sleep(150 * (i + 1));
     }
-  } catch {
-    // ignore
   }
-  return [];
-}
-
-async function getAllItems() {
-  if (hasBlobStorage()) {
-    const blobItems = await readBlob();
-    if (blobItems && Array.isArray(blobItems)) return blobItems;
-  }
-  return readLocal();
+  throw lastError || new Error('Failed to read items');
 }
 
 async function saveAllItems(items) {
   ensureBlobEnv();
   if (!hasBlobStorage()) {
-    throw new Error(
-      'Blob store not connected. Vercel → Storage → connect Blob to this project → Redeploy.'
-    );
+    throw new Error('Blob store not connected. Redeploy after connecting Blob in Vercel Storage.');
   }
 
   await put(BLOB_FILE, JSON.stringify(items), {
@@ -87,14 +61,17 @@ async function saveAllItems(items) {
     addRandomSuffix: false,
     allowOverwrite: true,
   });
+
+  // Brief pause then verify write landed (avoids stale CDN reads)
+  await sleep(200);
 }
 
 export async function getItems() {
-  return getAllItems();
+  if (!hasBlobStorage()) return [];
+  return readBlobWithRetry();
 }
 
 export async function addItem(item) {
-  const items = await getAllItems();
   const newItem = {
     id: crypto.randomUUID(),
     title: item.title,
@@ -102,14 +79,31 @@ export async function addItem(item) {
     description: item.description || '',
     createdAt: new Date().toISOString(),
   };
-  items.unshift(newItem);
-  await saveAllItems(items);
-  return newItem;
+
+  let lastError;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const items = await readBlobWithRetry();
+      items.unshift(newItem);
+      await saveAllItems(items);
+
+      const verified = await readBlobWithRetry();
+      if (verified.some((i) => i.id === newItem.id)) {
+        return { item: newItem, items: verified };
+      }
+    } catch (err) {
+      lastError = err;
+      await sleep(200 * (attempt + 1));
+    }
+  }
+
+  throw lastError || new Error('Failed to save item. Please try once more.');
 }
 
 export async function deleteItem(id) {
-  const items = (await getAllItems()).filter((i) => i.id !== id);
+  const items = (await readBlobWithRetry()).filter((i) => i.id !== id);
   await saveAllItems(items);
+  return readBlobWithRetry();
 }
 
 export function isStorageReady() {

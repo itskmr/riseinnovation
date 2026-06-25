@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { fetchItems, createItem, removeItem, logout, checkStorage } from '../lib/instaCodesApi';
+import { fetchItems, createItem, removeItem, logout } from '../lib/instaCodesApi';
 
 const AdminCMS = () => {
   const navigate = useNavigate();
@@ -12,7 +12,6 @@ const AdminCMS = () => {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
-  const [storageWarning, setStorageWarning] = useState('');
 
   const loadItems = useCallback(async () => {
     try {
@@ -26,9 +25,6 @@ const AdminCMS = () => {
 
   useEffect(() => {
     loadItems();
-    checkStorage()
-      .then((s) => { if (!s.configured) setStorageWarning(s.message); })
-      .catch(() => {});
   }, [loadItems]);
 
   const handleSubmit = async (e) => {
@@ -43,12 +39,25 @@ const AdminCMS = () => {
 
     setSubmitting(true);
     try {
-      await createItem({ title: title.trim(), link: link.trim(), description: description.trim() });
-      await loadItems();
+      const result = await createItem({
+        title: title.trim(),
+        link: link.trim(),
+        description: description.trim(),
+      });
+
+      // Use fresh list returned from server — no stale reload
+      if (result.items) {
+        setItems(result.items);
+      } else if (result.item) {
+        setItems((prev) => [result.item, ...prev.filter((i) => i.id !== result.item.id)]);
+      } else {
+        await loadItems();
+      }
+
       setTitle('');
       setLink('');
       setDescription('');
-      setSuccess('Added! Visible to everyone on /instaCodes');
+      setSuccess('Added! Live on /instaCodes now.');
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError(err.message);
@@ -80,12 +89,6 @@ const AdminCMS = () => {
       </header>
 
       <div className="container mx-auto px-4 py-8 max-w-4xl">
-        {storageWarning && (
-          <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-xl">
-            {storageWarning}
-          </div>
-        )}
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="bg-white rounded-2xl border p-6">
             <h2 className="text-xl font-bold mb-4">Add Item</h2>
@@ -105,7 +108,7 @@ const AdminCMS = () => {
               {error && <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-xl">{error}</div>}
               {success && <div className="bg-green-50 text-green-600 text-sm px-4 py-3 rounded-xl">{success}</div>}
               <button type="submit" disabled={submitting} className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-semibold rounded-xl">
-                {submitting ? 'Adding...' : 'Add to Wall'}
+                {submitting ? 'Saving...' : 'Add to Wall'}
               </button>
             </form>
           </div>

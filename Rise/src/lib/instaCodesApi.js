@@ -30,7 +30,9 @@ export function isAuthenticated() {
 }
 
 export async function fetchItems() {
-  const res = await fetch('/api/insta-codes');
+  const res = await fetch(`/api/insta-codes?t=${Date.now()}`, {
+    cache: 'no-store',
+  });
   return handleResponse(res);
 }
 
@@ -52,6 +54,6 @@ export async function removeItem(id) {
 }
 
 export async function checkStorage() {
-  const res = await fetch('/api/health');
+  const res = await fetch('/api/health', { cache: 'no-store' });
   return handleResponse(res);
 }

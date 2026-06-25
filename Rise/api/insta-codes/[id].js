@@ -2,6 +2,8 @@ import { deleteItem } from '../lib/store.js';
 import { verifyToken } from '../lib/auth.js';
 
 export default async function handler(req, res) {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+
   if (req.method !== 'DELETE') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
