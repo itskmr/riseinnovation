@@ -3,7 +3,7 @@ import PageLayout from '../components/layout/PageLayout';
 import { projectsData } from '../data/siteContent';
 
 const Home = () => (
-  <PageLayout title="Home">
+  <PageLayout title="Home" showTopAd>
     <section className="bg-gray-100 py-20">
       <div className="container mx-auto px-4 flex flex-col md:flex-row items-center gap-8">
         <div className="md:w-1/2">

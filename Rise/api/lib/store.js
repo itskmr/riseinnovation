@@ -6,8 +6,8 @@ import { BLOB_READ_WRITE_TOKEN } from './config.js';
 const BLOB_FILE = 'insta-codes/items.json';
 const LOCAL_FILE = path.join(process.cwd(), 'public/data/items.json');
 
-if (BLOB_READ_WRITE_TOKEN) {
-  process.env.BLOB_READ_WRITE_TOKEN = BLOB_READ_WRITE_TOKEN;
+function getBlobToken() {
+  return process.env.BLOB_READ_WRITE_TOKEN || BLOB_READ_WRITE_TOKEN || '';
 }
 
 function readLocal() {
@@ -31,19 +31,27 @@ async function readBlob() {
 }
 
 async function getAllItems() {
-  if (process.env.BLOB_READ_WRITE_TOKEN) {
-    const blobItems = await readBlob();
-    if (blobItems) return blobItems;
+  const token = getBlobToken();
+  if (token) {
+    process.env.BLOB_READ_WRITE_TOKEN = token;
+    try {
+      const blobItems = await readBlob();
+      if (blobItems) return blobItems;
+    } catch {
+      // fall through to local
+    }
   }
   return readLocal();
 }
 
 async function saveAllItems(items) {
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+  const token = getBlobToken();
+  if (!token) {
     throw new Error(
-      'Storage not ready. In Vercel → your project → Storage → Create Blob store → Connect → Redeploy.'
+      'Blob not connected yet. Vercel → Storage → Blob → Connect to project → then Redeploy (required!).'
     );
   }
+  process.env.BLOB_READ_WRITE_TOKEN = token;
   await put(BLOB_FILE, JSON.stringify(items), {
     access: 'public',
     contentType: 'application/json',
@@ -76,5 +84,5 @@ export async function deleteItem(id) {
 }
 
 export function isStorageReady() {
-  return !!process.env.BLOB_READ_WRITE_TOKEN;
+  return !!getBlobToken();
 }
