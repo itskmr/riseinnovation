@@ -82,7 +82,7 @@ const AdminCMS = () => {
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         {storageWarning && (
           <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-xl">
-            <strong>Blob connected but needs redeploy!</strong> You added Blob storage — now go to Vercel → Deployments → click ⋯ on latest → <strong>Redeploy</strong>. The token only applies after redeploy.
+            {storageWarning}
           </div>
         )}
 

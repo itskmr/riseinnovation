@@ -1,13 +1,57 @@
-import { put, list } from '@vercel/blob';
+import { put, list, get } from '@vercel/blob';
 import fs from 'fs';
 import path from 'path';
-import { BLOB_READ_WRITE_TOKEN } from './config.js';
+import { BLOB_READ_WRITE_TOKEN, BLOB_STORE_ID } from './config.js';
 
 const BLOB_FILE = 'insta-codes/items.json';
 const LOCAL_FILE = path.join(process.cwd(), 'public/data/items.json');
 
-function getBlobToken() {
-  return process.env.BLOB_READ_WRITE_TOKEN || BLOB_READ_WRITE_TOKEN || '';
+function ensureBlobEnv() {
+  if (BLOB_READ_WRITE_TOKEN && !process.env.BLOB_READ_WRITE_TOKEN) {
+    process.env.BLOB_READ_WRITE_TOKEN = BLOB_READ_WRITE_TOKEN;
+  }
+  if (BLOB_STORE_ID && !process.env.BLOB_STORE_ID) {
+    process.env.BLOB_STORE_ID = BLOB_STORE_ID;
+  }
+}
+
+export function hasBlobStorage() {
+  ensureBlobEnv();
+  return !!(
+    process.env.BLOB_STORE_ID ||
+    process.env.BLOB_READ_WRITE_TOKEN
+  );
+}
+
+async function streamToText(stream) {
+  return new Response(stream).text();
+}
+
+async function readBlob() {
+  ensureBlobEnv();
+  try {
+    const result = await get(BLOB_FILE, { access: 'private' });
+    if (result?.stream) {
+      return JSON.parse(await streamToText(result.stream));
+    }
+  } catch {
+    // file may not exist yet
+  }
+
+  try {
+    const { blobs } = await list({ prefix: 'insta-codes/', limit: 20 });
+    const target = blobs.find((b) => b.pathname === BLOB_FILE);
+    if (target) {
+      const result = await get(target.pathname, { access: 'private' });
+      if (result?.stream) {
+        return JSON.parse(await streamToText(result.stream));
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  return null;
 }
 
 function readLocal() {
@@ -21,39 +65,24 @@ function readLocal() {
   return [];
 }
 
-async function readBlob() {
-  const { blobs } = await list({ prefix: BLOB_FILE, limit: 1 });
-  const target = blobs.find((b) => b.pathname === BLOB_FILE);
-  if (!target) return null;
-  const res = await fetch(target.url);
-  if (!res.ok) return null;
-  return res.json();
-}
-
 async function getAllItems() {
-  const token = getBlobToken();
-  if (token) {
-    process.env.BLOB_READ_WRITE_TOKEN = token;
-    try {
-      const blobItems = await readBlob();
-      if (blobItems) return blobItems;
-    } catch {
-      // fall through to local
-    }
+  if (hasBlobStorage()) {
+    const blobItems = await readBlob();
+    if (blobItems && Array.isArray(blobItems)) return blobItems;
   }
   return readLocal();
 }
 
 async function saveAllItems(items) {
-  const token = getBlobToken();
-  if (!token) {
+  ensureBlobEnv();
+  if (!hasBlobStorage()) {
     throw new Error(
-      'Blob not connected yet. Vercel → Storage → Blob → Connect to project → then Redeploy (required!).'
+      'Blob store not connected. Vercel → Storage → connect Blob to this project → Redeploy.'
     );
   }
-  process.env.BLOB_READ_WRITE_TOKEN = token;
+
   await put(BLOB_FILE, JSON.stringify(items), {
-    access: 'public',
+    access: 'private',
     contentType: 'application/json',
     addRandomSuffix: false,
     allowOverwrite: true,
@@ -84,5 +113,5 @@ export async function deleteItem(id) {
 }
 
 export function isStorageReady() {
-  return !!getBlobToken();
+  return hasBlobStorage();
 }

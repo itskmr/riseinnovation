@@ -1,5 +1,5 @@
 import { verifyToken } from '../lib/auth.js';
-import { getItems, addItem, isStorageReady } from '../lib/store.js';
+import { getItems, addItem } from '../lib/store.js';
 
 export default async function handler(req, res) {
   if (req.method === 'GET') {
@@ -14,11 +14,6 @@ export default async function handler(req, res) {
     if (!verifyToken(req.headers.authorization)) {
       return res.status(401).json({ error: 'Please log in again' });
     }
-    if (!isStorageReady()) {
-      return res.status(503).json({
-        error: 'Storage not ready. Vercel → Storage → Create Blob store → Connect → Redeploy.',
-      });
-    }
 
     try {
       const { title, link, description } = req.body || {};
@@ -32,6 +27,7 @@ export default async function handler(req, res) {
       });
       return res.status(201).json(item);
     } catch (err) {
+      console.error('POST /api/insta-codes error:', err);
       return res.status(500).json({ error: err.message });
     }
   }
