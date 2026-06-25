@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Home from './pages/Home';
 import InstaCodes from './pages/InstaCodes';
+import InstaCodeLink from './pages/InstaCodeLink';
 import About from './pages/About';
 import ContactPage from './pages/ContactPage';
 import PrivacyPolicy from './pages/PrivacyPolicy';
@@ -21,6 +22,7 @@ function App() {
       <div className="min-h-screen flex flex-col">
         <Routes>
           <Route path="/instaCodes" element={<InstaCodes />} />
+          <Route path="/instaCodes/link/:id" element={<InstaCodeLink />} />
           <Route path="/home" element={<Home />} />
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<ContactPage />} />

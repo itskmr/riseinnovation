@@ -1,4 +1,5 @@
 import { useState, useEffect, Fragment } from 'react';
+import { Link } from 'react-router-dom';
 import { fetchItems } from '../lib/instaCodesApi';
 import PageLayout from '../components/layout/PageLayout';
 import AdsterraBanner from '../components/ads/AdsterraBanner';
@@ -62,18 +63,15 @@ const InstaCodes = () => {
                 return (
                   <Fragment key={item.id}>
                     <li className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                      <h2 className="text-xl font-bold text-gray-900 mb-1">{item.title}</h2>
                       {item.description && (
-                        <p className="text-gray-600 text-sm mb-4 leading-relaxed">{item.description}</p>
+                        <p className="text-gray-600 text-sm mb-3 leading-relaxed">{item.description}</p>
                       )}
-                      <a
-                        href={item.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 px-5 py-2.5 rounded-xl"
+                      <Link
+                        to={`/instaCodes/link/${item.id}`}
+                        className="block w-full text-center text-lg font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 px-6 py-4 rounded-2xl shadow-sm hover:shadow-md transition-all"
                       >
-                        Open Link →
-                      </a>
+                        {item.title} — Click Here →
+                      </Link>
                     </li>
 
                     {/* Mobile: ad after every item */}
